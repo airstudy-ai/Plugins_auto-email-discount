@@ -3,7 +3,7 @@
  * Plugin Name:       Auto Email Discount for WooCommerce (Domains & Specific Emails - Advanced)
  * Plugin URI:        https://example.com/plugins/auto-email-discount/
  * Description:       Automatically applies a user-defined discount for users with specific email domains OR specific email addresses in WooCommerce, with per-item discount rates, WooCommerce product category discounts, and one-time options.
- * Version:           2.1.0
+ * Version:           2.2.0
  * Author:            shalom
  * Author URI:        https://example.com
  * License:           GPL v2 or later
@@ -76,18 +76,23 @@ function aed_plugin_init_adv() {
 }
 add_action( 'plugins_loaded', 'aed_plugin_init_adv' );
 
-/** Enqueue admin scripts for settings page (MODIFIED v2.1.0: Use product_cat) */
+/** Enqueue admin scripts for settings page (MODIFIED v2.2.0: Add Select2) */
 function aed_enqueue_admin_scripts_adv( $hook_suffix ) {
     if ( 'settings_page_' . AED_PLUGIN_SLUG !== $hook_suffix ) { return; }
 
-    // JS Version updated to 2.1.0
-    wp_enqueue_script( 'aed-admin-script', plugins_url( 'admin-script.js', AED_PLUGIN_FILE ), array( 'jquery' ), '2.1.0', true );
+    // --- (START) NEW v2.2.0: Enqueue Select2 assets ---
+    wp_enqueue_script( 'wc-enhanced-select' );
+    wp_enqueue_style( 'woocommerce_admin_styles' );
+    // --- (END) NEW v2.2.0 ---
+
+    // JS Version updated to 2.2.0
+    wp_enqueue_script( 'aed-admin-script', plugins_url( 'admin-script.js', AED_PLUGIN_FILE ), array( 'jquery', 'wc-enhanced-select' ), '2.2.0', true ); // Added wc-enhanced-select dependency
 
     // Localize script with WooCommerce product categories
     $product_categories = array();
-    if ( taxonomy_exists( 'product_cat' ) ) { // CHANGED
+    if ( taxonomy_exists( 'product_cat' ) ) { 
         $terms = get_terms( array(
-            'taxonomy'   => 'product_cat', // CHANGED
+            'taxonomy'   => 'product_cat', 
             'hide_empty' => false,
         ) );
         if ( ! is_wp_error( $terms ) && ! empty( $terms ) ) {
@@ -101,7 +106,7 @@ function aed_enqueue_admin_scripts_adv( $hook_suffix ) {
     }
 
     wp_localize_script( 'aed-admin-script', 'aedData', array(
-        'productCategories' => $product_categories, // CHANGED
+        'productCategories' => $product_categories, 
     ) ); 
     
     $custom_css = "
@@ -121,6 +126,13 @@ function aed_enqueue_admin_scripts_adv( $hook_suffix ) {
         .wp-list-table .aed-product-note-input { width: 100%; max-width: 200px; }
         .wp-list-table select[multiple] { width: 100%; height: 100px; min-width: 180px; }
         .aed-helper-link { font-style: italic; font-size: 12px; }
+        
+        /* --- (START) NEW v2.2.0: Select2 width fix --- */
+        .wp-list-table select.wc-enhanced-select[multiple],
+        .aed-repeater-item select.wc-enhanced-select[multiple] {
+             width: 100% !important; 
+        }
+        /* --- (END) NEW v2.2.0 --- */
     ";
     wp_add_inline_style( 'wp-admin', $custom_css );
 }
@@ -280,15 +292,15 @@ function aed_render_specific_email_discounts_field_adv() {
 }
 
 /**
- * MODIFIED (v2.1.0): Render Repeater Fields for Product Category-Domain Discounts
+ * MODIFIED (v2.2.0): Render Repeater Fields for Product Category-Domain Discounts
  */
 function aed_render_category_domain_discounts_field_adv() {
     $cat_domain_discounts = aed_get_option_value_adv( 'category_domain_discounts', array() );
 
     // Get WooCommerce product categories
     $product_categories = array();
-    if ( taxonomy_exists( 'product_cat' ) ) { // CHANGED
-        $terms = get_terms( array( 'taxonomy' => 'product_cat', 'hide_empty' => false ) ); // CHANGED
+    if ( taxonomy_exists( 'product_cat' ) ) { 
+        $terms = get_terms( array( 'taxonomy' => 'product_cat', 'hide_empty' => false ) ); 
         if ( ! is_wp_error( $terms ) && ! empty( $terms ) ) {
             $product_categories = $terms;
         }
@@ -299,8 +311,11 @@ function aed_render_category_domain_discounts_field_adv() {
             <?php foreach ( $cat_domain_discounts as $index => $rule ) : if (is_array($rule) && isset($rule['domain']) && isset($rule['percentage'])) : ?>
                 <?php $saved_cat_ids = isset( $rule['category_ids'] ) && is_array( $rule['category_ids'] ) ? $rule['category_ids'] : array(); ?>
                 <div class="aed-repeater-item">
-                    <label><?php _e( 'Product Categories:', 'auto-email-discount' ); ?><br/> <select name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[category_domain_discounts][<?php echo $index; ?>][category_ids][]" multiple="multiple">
-                            <option value=""><?php _e( '-- Select Product Categories --', 'auto-email-discount' ); ?></option> <?php foreach ( $product_categories as $term ) : ?> <option value="<?php echo esc_attr( $term->term_id ); ?>" <?php selected( in_array( $term->term_id, $saved_cat_ids ), true ); ?>>
+                    <label><?php _e( 'Product Categories:', 'auto-email-discount' ); ?><br/>
+                        <select name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[category_domain_discounts][<?php echo $index; ?>][category_ids][]" multiple="multiple" 
+                                class="wc-enhanced-select" data-placeholder="<?php esc_attr_e( 'Select product categories...', 'auto-email-discount' ); ?>">
+                        <?php foreach ( $product_categories as $term ) : ?> 
+                                <option value="<?php echo esc_attr( $term->term_id ); ?>" <?php selected( in_array( $term->term_id, $saved_cat_ids ), true ); ?>>
                                     <?php echo esc_html( $term->name ); ?>
                                 </option>
                             <?php endforeach; ?>
@@ -324,22 +339,26 @@ function aed_render_category_domain_discounts_field_adv() {
             <?php endif; endforeach; ?>
         <?php endif; ?>
     </div>
-    <button type="button" id="aed-add-category-domain-rule" class="button"><?php _e( 'Add Product Category-Domain Rule', 'auto-email-discount' ); ?></button> <p class="description"><?php _e( 'Apply a discount to selected WooCommerce product categories for users from a specific email domain.', 'auto-email-discount' ); ?></p> <?php if ( empty( $product_categories ) ) : ?> <p class="notice notice-warning inline" style="padding: 10px;">
-            <?php _e( 'No WooCommerce product categories found.', 'auto-email-discount' ); ?> </p>
+    <button type="button" id="aed-add-category-domain-rule" class="button"><?php _e( 'Add Product Category-Domain Rule', 'auto-email-discount' ); ?></button> 
+    <p class="description"><?php _e( 'Apply a discount to selected WooCommerce product categories for users from a specific email domain.', 'auto-email-discount' ); ?></p> 
+    <?php if ( empty( $product_categories ) ) : ?> 
+        <p class="notice notice-warning inline" style="padding: 10px;">
+            <?php _e( 'No WooCommerce product categories found.', 'auto-email-discount' ); ?> 
+        </p>
     <?php endif; ?>
     <?php
 }
 
 /**
- * MODIFIED (v2.1.0): Render Table Fields for Product Category-Email Discounts
+ * MODIFIED (v2.2.0): Render Table Fields for Product Category-Email Discounts
  */
 function aed_render_category_email_discounts_field_adv() {
     $cat_email_discounts = aed_get_option_value_adv( 'category_email_discounts', array() );
 
     // Get WooCommerce product categories
     $product_categories = array();
-    if ( taxonomy_exists( 'product_cat' ) ) { // CHANGED
-        $terms = get_terms( array( 'taxonomy' => 'product_cat', 'hide_empty' => false ) ); // CHANGED
+    if ( taxonomy_exists( 'product_cat' ) ) { 
+        $terms = get_terms( array( 'taxonomy' => 'product_cat', 'hide_empty' => false ) ); 
         if ( ! is_wp_error( $terms ) && ! empty( $terms ) ) {
             $product_categories = $terms;
         }
@@ -351,7 +370,8 @@ function aed_render_category_email_discounts_field_adv() {
     <table class="wp-list-table widefat striped" id="aed-category-email-table">
         <thead>
             <tr>
-                <th scope="col" style="width: 25%;"><?php _e( 'Product Categories', 'auto-email-discount' ); ?></th> <th scope="col" style="width: 25%;"><?php _e( 'Allowed Email', 'auto-email-discount' ); ?></th>
+                <th scope="col" style="width: 25%;"><?php _e( 'Product Categories', 'auto-email-discount' ); ?></th> 
+                <th scope="col" style="width: 25%;"><?php _e( 'Allowed Email', 'auto-email-discount' ); ?></th>
                 <th scope="col" style="width: 100px;"><?php _e( 'Percentage (%)', 'auto-email-discount' ); ?></th>
                 <th scope="col" style="width: 120px;"><?php _e( 'One-time only', 'auto-email-discount' ); ?></th>
                 <th scope="col"><?php _e( 'Admin Note', 'auto-email-discount' ); ?></th>
@@ -364,8 +384,10 @@ function aed_render_category_email_discounts_field_adv() {
                      <?php $saved_cat_ids = isset( $rule['category_ids'] ) && is_array( $rule['category_ids'] ) ? $rule['category_ids'] : array(); ?>
                     <tr>
                         <td>
-                            <select name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[category_email_discounts][<?php echo $index; ?>][category_ids][]" multiple="multiple">
-                                <option value=""><?php _e( '-- Select Product Categories --', 'auto-email-discount' ); ?></option> <?php foreach ( $product_categories as $term ) : ?> <option value="<?php echo esc_attr( $term->term_id ); ?>" <?php selected( in_array( $term->term_id, $saved_cat_ids ), true ); ?>>
+                            <select name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[category_email_discounts][<?php echo $index; ?>][category_ids][]" multiple="multiple" 
+                                    class="wc-enhanced-select" data-placeholder="<?php esc_attr_e( 'Select product categories...', 'auto-email-discount' ); ?>">
+                            <?php foreach ( $product_categories as $term ) : ?> 
+                                    <option value="<?php echo esc_attr( $term->term_id ); ?>" <?php selected( in_array( $term->term_id, $saved_cat_ids ), true ); ?>>
                                         <?php echo esc_html( $term->name ); ?>
                                     </option>
                                 <?php endforeach; ?>
@@ -394,8 +416,12 @@ function aed_render_category_email_discounts_field_adv() {
             <?php endif; ?>
         </tbody>
     </table>
-    <button type="button" id="aed-add-category-email-rule" class="button" style="margin-top: 10px;"><?php _e( 'Add Product Category-Email Rule', 'auto-email-discount' ); ?></button> <p class="description"><?php _e( 'Apply a discount to selected WooCommerce product categories for users with a specific email address.', 'auto-email-discount' ); ?></p> <?php if ( empty( $product_categories ) ) : ?> <p class="notice notice-warning inline" style="padding: 10px;">
-            <?php _e( 'No WooCommerce product categories found.', 'auto-email-discount' ); ?> </p>
+    <button type="button" id="aed-add-category-email-rule" class="button" style="margin-top: 10px;"><?php _e( 'Add Product Category-Email Rule', 'auto-email-discount' ); ?></button> 
+    <p class="description"><?php _e( 'Apply a discount to selected WooCommerce product categories for users with a specific email address.', 'auto-email-discount' ); ?></p> 
+    <?php if ( empty( $product_categories ) ) : ?> 
+        <p class="notice notice-warning inline" style="padding: 10px;">
+            <?php _e( 'No WooCommerce product categories found.', 'auto-email-discount' ); ?> 
+        </p>
     <?php endif; ?>
     <?php
 }
