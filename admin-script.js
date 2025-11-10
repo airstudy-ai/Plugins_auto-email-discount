@@ -1,10 +1,9 @@
 jQuery(document).ready(function($) {
-    // --- Domain Discounts Repeater (MODIFIED) ---
+    // --- Domain Discounts Repeater ---
     let domainCounter = $('#aed-domain-discounts-repeater .aed-repeater-item').length;
 
     $('#aed-add-domain-rule').on('click', function() {
         var repeater = $('#aed-domain-discounts-repeater');
-        // New: Added Admin Note input
         var newItem = `
             <div class="aed-repeater-item">
                 <label>Domain:<br/>
@@ -34,13 +33,12 @@ jQuery(document).ready(function($) {
         $(this).closest('.aed-repeater-item').remove();
     });
 
-    // --- Specific Email Discounts (MODIFIED for Table UI) ---
+    // --- Specific Email Discounts (Table UI) ---
     let emailCounter = $('#aed-specific-email-discounts-tbody tr').length;
     var emailTableBody = $('#aed-specific-email-discounts-tbody');
 
-    // MODIFIED: Add Specific Email Rule (Appends a <tr> to the table)
+    // Add Specific Email Rule (Appends a <tr> to the table)
     $('#aed-add-specific-email-rule').on('click', function() {
-        // New: Added Admin Note cell
         var newItem = `
             <tr>
                 <td>
@@ -69,25 +67,22 @@ jQuery(document).ready(function($) {
         emailCounter++; 
     });
 
-    // MODIFIED: Remove Rule (Removes the <tr>)
+    // Remove Rule (Removes the <tr>)
     $('body').on('click', '.aed-remove-rule', function() {
         $(this).closest('tr').remove(); // Target <tr> for table
     });
     
-    // *** MODIFIED: Live Search for Specific Emails Table (Expanded Search) ***
+    // Live Search for Specific Emails Table
     $('#aed-email-search').on('keyup', function() {
         var searchTerm = $(this).val().toLowerCase();
 
         emailTableBody.find('tr').each(function() {
             var row = $(this);
-
-            // Get values from all searchable fields
             var emailVal = row.find('input[type="email"]').val().toLowerCase();
             var percentVal = row.find('input[type="number"]').val().toLowerCase();
             var productIdsVal = row.find('input.aed-product-ids-input').val().toLowerCase();
             var adminNoteVal = row.find('input.aed-product-note-input').val().toLowerCase();
 
-            // Check if the search term is in ANY of the fields
             if (emailVal.includes(searchTerm) ||
                 percentVal.includes(searchTerm) ||
                 productIdsVal.includes(searchTerm) ||
@@ -100,52 +95,123 @@ jQuery(document).ready(function($) {
         });
     });
 
-    // --- Course Category Discounts Repeater ---
-    let categoryCounter = $('#aed-course-category-discounts-repeater .aed-repeater-item').length;
-
-    $('#aed-add-category-rule').on('click', function() {
-        var repeater = $('#aed-course-category-discounts-repeater');
-
-        // Build category options from localized data
-        var categoryOptions = '<option value="">-- Select Category --</option>';
-        if (typeof aedData !== 'undefined' && aedData.courseCategories) {
-            aedData.courseCategories.forEach(function(category) {
+    // --- (MODIFIED v2.1.0) Product Category-Domain Discounts Repeater ---
+    
+    // Helper function to build category options
+    function getCategoryOptions() {
+        var categoryOptions = '<option value="">-- Select Product Categories --</option>'; // CHANGED
+        if (typeof aedData !== 'undefined' && aedData.productCategories) { // CHANGED
+            aedData.productCategories.forEach(function(category) { // CHANGED
                 categoryOptions += '<option value="' + category.id + '">' + category.name + '</option>';
             });
         }
+        return categoryOptions;
+    }
+
+    let catDomainCounter = $('#aed-category-domain-discounts-repeater .aed-repeater-item').length;
+
+    $('#aed-add-category-domain-rule').on('click', function() {
+        var repeater = $('#aed-category-domain-discounts-repeater');
+        var categoryOptions = getCategoryOptions();
 
         var newItem = `
             <div class="aed-repeater-item">
-                <label>Course Category:<br/>
-                    <select name="aed_settings_adv[course_category_discounts][${categoryCounter}][category_id]" style="min-width: 200px;">
+                <label>Product Categories:<br/> <select name="aed_settings_adv[category_domain_discounts][${catDomainCounter}][category_ids][]" multiple="multiple">
                         ${categoryOptions}
                     </select>
                 </label>
+                <label>Allowed Domain:<br/>
+                    <input type="text" name="aed_settings_adv[category_domain_discounts][${catDomainCounter}][domain]" placeholder="example.com" />
+                </label>
                 <label>Percentage (%):<br/>
-                    <input type="number" name="aed_settings_adv[course_category_discounts][${categoryCounter}][percentage]" value="10" min="0" max="100" step="0.01" style="width: 70px;" />
+                    <input type="number" name="aed_settings_adv[category_domain_discounts][${catDomainCounter}][percentage]" value="10" min="0" max="100" step="0.01" style="width: 70px;" />
                 </label>
                 <label>One-time:<br/>
-                    <input type="checkbox" name="aed_settings_adv[course_category_discounts][${categoryCounter}][one_time]" value="1" />
+                    <input type="checkbox" name="aed_settings_adv[category_domain_discounts][${catDomainCounter}][one_time]" value="1" />
                     One-time only
                 </label>
                 <label>Admin Note:<br/>
-                    <input type="text" class="aed-category-note-input" name="aed_settings_adv[course_category_discounts][${categoryCounter}][category_note]" placeholder="e.g. Beginner Courses" style="width: 150px;" />
+                    <input type="text" class="aed-category-note-input" name="aed_settings_adv[category_domain_discounts][${catDomainCounter}][category_note]" placeholder="e.g. Beginner Courses" style="width: 150px;" />
                 </label>
-                <br/>
-                <label>Allowed Domains (optional):<br/>
-                    <input type="text" class="aed-allowed-domains-input" name="aed_settings_adv[course_category_discounts][${categoryCounter}][allowed_domains]" placeholder="e.g. example.com, test.org" style="width: 250px;" />
-                </label>
-                <label>Allowed Emails (optional):<br/>
-                    <input type="text" class="aed-allowed-emails-input" name="aed_settings_adv[course_category_discounts][${categoryCounter}][allowed_emails]" placeholder="e.g. user@example.com, admin@test.org" style="width: 300px;" />
-                </label>
-                <button type="button" class="button aed-remove-rule-category">Remove</button>
+                <button type="button" class="button aed-remove-rule-cat-domain">Remove</button>
             </div>`;
         repeater.append(newItem);
-        categoryCounter++;
+        catDomainCounter++;
     });
 
-    // Category remove button
-    $('body').on('click', '.aed-remove-rule-category', function() {
+    // Category-Domain remove button
+    $('body').on('click', '.aed-remove-rule-cat-domain', function() {
         $(this).closest('.aed-repeater-item').remove();
     });
+
+    // --- (MODIFIED v2.1.0) Product Category-Specific Email Discounts (Table UI) ---
+    let catEmailCounter = $('#aed-category-email-discounts-tbody tr').length;
+    var catEmailTableBody = $('#aed-category-email-discounts-tbody');
+
+    // Add Category-Email Rule
+    $('#aed-add-category-email-rule').on('click', function() {
+        var categoryOptions = getCategoryOptions();
+        var newItem = `
+            <tr>
+                <td>
+                    <select name="aed_settings_adv[category_email_discounts][${catEmailCounter}][category_ids][]" multiple="multiple">
+                        ${categoryOptions}
+                    </select>
+                </td>
+                <td>
+                    <input type="email" name="aed_settings_adv[category_email_discounts][${catEmailCounter}][email]" placeholder="user@example.com" />
+                </td>
+                <td>
+                    <input type="number" name="aed_settings_adv[category_email_discounts][${catEmailCounter}][percentage]" value="10" min="0" max="100" step="0.01" />
+                </td>
+                <td>
+                    <label>
+                        <input type="checkbox" name="aed_settings_adv[category_email_discounts][${catEmailCounter}][one_time]" value="1" />
+                        Yes
+                    </label>
+                </td>
+                <td>
+                    <input type="text" class="aed-category-note-input" name="aed_settings_adv[category_email_discounts][${catEmailCounter}][category_note]" placeholder="e.g. Intro Course" style="width: 100%;" />
+                </td>
+                <td>
+                    <button type="button" class="button aed-remove-rule-cat-email">Remove</button>
+                </td>
+            </tr>`;
+        catEmailTableBody.append(newItem);
+        catEmailCounter++; 
+    });
+
+    // Category-Email remove button
+    $('body').on('click', '.aed-remove-rule-cat-email', function() {
+        $(this).closest('tr').remove();
+    });
+
+    // Live Search for Category-Email Table
+    $('#aed-category-email-search').on('keyup', function() {
+        var searchTerm = $(this).val().toLowerCase();
+
+        catEmailTableBody.find('tr').each(function() {
+            var row = $(this);
+
+            // Get text from selected categories
+            var categoryText = row.find('select option:selected').map(function() {
+                return $(this).text();
+            }).get().join(' ').toLowerCase();
+
+            var emailVal = row.find('input[type="email"]').val().toLowerCase();
+            var percentVal = row.find('input[type="number"]').val().toLowerCase();
+            var adminNoteVal = row.find('input.aed-category-note-input').val().toLowerCase();
+
+            if (categoryText.includes(searchTerm) ||
+                emailVal.includes(searchTerm) ||
+                percentVal.includes(searchTerm) ||
+                adminNoteVal.includes(searchTerm))
+            {
+                row.show();
+            } else {
+                row.hide();
+            }
+        });
+    });
+
 });
