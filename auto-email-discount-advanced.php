@@ -3,7 +3,7 @@
  * Plugin Name:       Auto Email Discount for WooCommerce (Domains & Specific Emails - Advanced)
  * Plugin URI:        https://example.com/plugins/auto-email-discount/
  * Description:       Automatically applies a user-defined discount for users with specific email domains OR specific email addresses in WooCommerce, with per-item discount rates, LearnDash course category discounts, and one-time options.
- * Version:           1.8.0
+ * Version:           1.9.0
  * Author:            shalom
  * Author URI:        https://example.com
  * License:           GPL v2 or later
@@ -79,8 +79,8 @@ add_action( 'plugins_loaded', 'aed_plugin_init_adv' );
 function aed_enqueue_admin_scripts_adv( $hook_suffix ) {
     if ( 'settings_page_' . AED_PLUGIN_SLUG !== $hook_suffix ) { return; }
 
-    // JS Version updated to 1.8.0
-    wp_enqueue_script( 'aed-admin-script', plugins_url( 'admin-script.js', AED_PLUGIN_FILE ), array( 'jquery' ), '1.8.0', true );
+    // JS Version updated to 1.9.0
+    wp_enqueue_script( 'aed-admin-script', plugins_url( 'admin-script.js', AED_PLUGIN_FILE ), array( 'jquery' ), '1.9.0', true );
 
     // Localize script with course categories
     $course_categories = array();
@@ -311,6 +311,13 @@ function aed_render_course_category_discounts_field_adv() {
                     <label><?php _e( 'Admin Note:', 'auto-email-discount' ); ?><br/>
                         <input type="text" class="aed-category-note-input" name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[course_category_discounts][<?php echo $index; ?>][category_note]" value="<?php echo esc_attr( isset( $rule['category_note'] ) ? $rule['category_note'] : '' ); ?>" placeholder="e.g. Beginner Courses" style="width: 150px;" />
                     </label>
+                    <br/>
+                    <label><?php _e( 'Allowed Domains (optional):', 'auto-email-discount' ); ?><br/>
+                        <input type="text" class="aed-allowed-domains-input" name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[course_category_discounts][<?php echo $index; ?>][allowed_domains]" value="<?php echo esc_attr( isset( $rule['allowed_domains'] ) ? $rule['allowed_domains'] : '' ); ?>" placeholder="e.g. example.com, test.org" style="width: 250px;" />
+                    </label>
+                    <label><?php _e( 'Allowed Emails (optional):', 'auto-email-discount' ); ?><br/>
+                        <input type="text" class="aed-allowed-emails-input" name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[course_category_discounts][<?php echo $index; ?>][allowed_emails]" value="<?php echo esc_attr( isset( $rule['allowed_emails'] ) ? $rule['allowed_emails'] : '' ); ?>" placeholder="e.g. user@example.com, admin@test.org" style="width: 300px;" />
+                    </label>
                     <button type="button" class="button aed-remove-rule-category"><?php _e( 'Remove', 'auto-email-discount' ); ?></button>
                 </div>
             <?php endif; endforeach; ?>
@@ -318,6 +325,7 @@ function aed_render_course_category_discounts_field_adv() {
     </div>
     <button type="button" id="aed-add-category-rule" class="button"><?php _e( 'Add Category Rule', 'auto-email-discount' ); ?></button>
     <p class="description"><?php _e( 'Add LearnDash course categories and their specific discount percentages. Discounts will apply to all courses in the selected category.', 'auto-email-discount' ); ?></p>
+    <p class="description"><?php _e( '<strong>Allowed Domains/Emails:</strong> Leave blank to apply to all users, or enter comma-separated domains (e.g., "example.com, test.org") or specific emails (e.g., "user@example.com, admin@test.org") to restrict the discount to those users only.', 'auto-email-discount' ); ?></p>
     <?php if ( empty( $course_categories ) ) : ?>
         <p class="notice notice-warning inline" style="padding: 10px;">
             <?php _e( 'No LearnDash course categories found. Please ensure LearnDash is installed and course categories are created.', 'auto-email-discount' ); ?>
@@ -416,10 +424,12 @@ function aed_sanitize_settings_adv( $input ) {
                 // Verify the category exists
                 if ( $category_id > 0 && term_exists( $category_id, 'ld_course_category' ) ) {
                     $new_input['course_category_discounts'][] = array(
-                        'category_id'   => $category_id,
-                        'percentage'    => max( 0, min( 100, floatval( $percentage_value ) ) ),
-                        'one_time'      => isset( $rule_candidate['one_time'] ) ? 1 : 0,
-                        'category_note' => isset( $rule_candidate['category_note'] ) ? sanitize_text_field( $rule_candidate['category_note'] ) : '',
+                        'category_id'      => $category_id,
+                        'percentage'       => max( 0, min( 100, floatval( $percentage_value ) ) ),
+                        'one_time'         => isset( $rule_candidate['one_time'] ) ? 1 : 0,
+                        'category_note'    => isset( $rule_candidate['category_note'] ) ? sanitize_text_field( $rule_candidate['category_note'] ) : '',
+                        'allowed_domains'  => isset( $rule_candidate['allowed_domains'] ) ? sanitize_text_field( $rule_candidate['allowed_domains'] ) : '',
+                        'allowed_emails'   => isset( $rule_candidate['allowed_emails'] ) ? sanitize_text_field( $rule_candidate['allowed_emails'] ) : '',
                     );
                 }
             }
@@ -548,16 +558,52 @@ function aed_apply_email_based_discount_adv( $cart ) {
             foreach ( $course_category_discounts as $rule ) {
                 if ( isset( $rule['category_id'] ) && isset( $rule['percentage'] ) ) {
                     if ( in_array( $rule['category_id'], $course_terms ) ) {
-                        $is_one_time = isset( $rule['one_time'] ) ? $rule['one_time'] : 0;
+                        // Check if domain/email restrictions apply
+                        $allowed_domains = isset( $rule['allowed_domains'] ) ? $rule['allowed_domains'] : '';
+                        $allowed_emails = isset( $rule['allowed_emails'] ) ? $rule['allowed_emails'] : '';
 
-                        if ( $is_one_time && in_array( $user_email_lc, $used_emails ) ) {
-                            continue; // Skip this rule
+                        $domain_match = false;
+                        $email_match = false;
+
+                        // If both are empty, allow all users
+                        if ( empty( $allowed_domains ) && empty( $allowed_emails ) ) {
+                            $domain_match = true;
+                            $email_match = true;
+                        } else {
+                            // Check allowed emails first (highest priority)
+                            if ( ! empty( $allowed_emails ) ) {
+                                $allowed_emails_array = array_map( 'trim', array_map( 'strtolower', explode( ',', $allowed_emails ) ) );
+                                if ( in_array( $user_email_lc, $allowed_emails_array ) ) {
+                                    $email_match = true;
+                                }
+                            }
+
+                            // Check allowed domains
+                            if ( ! empty( $allowed_domains ) ) {
+                                $user_email_domain_parts = explode( '@', $user_email_lc );
+                                if ( count( $user_email_domain_parts ) > 1 ) {
+                                    $user_domain = array_pop( $user_email_domain_parts );
+                                    $allowed_domains_array = array_map( 'trim', array_map( 'strtolower', explode( ',', $allowed_domains ) ) );
+                                    if ( in_array( $user_domain, $allowed_domains_array ) ) {
+                                        $domain_match = true;
+                                    }
+                                }
+                            }
                         }
 
-                        $found_discount_percentage = floatval( $rule['percentage'] );
-                        $found_is_one_time = $is_one_time;
-                        $found_category_id = $rule['category_id'];
-                        break 2; // Break out of both loops
+                        // Only apply discount if domain or email matches (or no restrictions set)
+                        if ( $domain_match || $email_match ) {
+                            $is_one_time = isset( $rule['one_time'] ) ? $rule['one_time'] : 0;
+
+                            if ( $is_one_time && in_array( $user_email_lc, $used_emails ) ) {
+                                continue; // Skip this rule
+                            }
+
+                            $found_discount_percentage = floatval( $rule['percentage'] );
+                            $found_is_one_time = $is_one_time;
+                            $found_category_id = $rule['category_id'];
+                            break 2; // Break out of both loops
+                        }
                     }
                 }
             }
