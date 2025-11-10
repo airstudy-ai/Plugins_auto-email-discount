@@ -131,6 +131,13 @@ jQuery(document).ready(function($) {
                 <label>Admin Note:<br/>
                     <input type="text" class="aed-category-note-input" name="aed_settings_adv[course_category_discounts][${categoryCounter}][category_note]" placeholder="e.g. Beginner Courses" style="width: 150px;" />
                 </label>
+                <br/>
+                <label>Allowed Domains (optional):<br/>
+                    <input type="text" class="aed-allowed-domains-input" name="aed_settings_adv[course_category_discounts][${categoryCounter}][allowed_domains]" placeholder="e.g. example.com, test.org" style="width: 250px;" />
+                </label>
+                <label>Allowed Emails (optional):<br/>
+                    <input type="text" class="aed-allowed-emails-input" name="aed_settings_adv[course_category_discounts][${categoryCounter}][allowed_emails]" placeholder="e.g. user@example.com, admin@test.org" style="width: 300px;" />
+                </label>
                 <button type="button" class="button aed-remove-rule-category">Remove</button>
             </div>`;
         repeater.append(newItem);
