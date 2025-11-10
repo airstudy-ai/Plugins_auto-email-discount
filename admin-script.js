@@ -95,13 +95,13 @@ jQuery(document).ready(function($) {
         });
     });
 
-    // --- (MODIFIED v2.1.0) Product Category-Domain Discounts Repeater ---
+    // --- (MODIFIED v2.2.0) Product Category-Domain Discounts Repeater ---
     
     // Helper function to build category options
     function getCategoryOptions() {
-        var categoryOptions = '<option value="">-- Select Product Categories --</option>'; // CHANGED
-        if (typeof aedData !== 'undefined' && aedData.productCategories) { // CHANGED
-            aedData.productCategories.forEach(function(category) { // CHANGED
+        var categoryOptions = ''; // Placeholder option will be in the data-placeholder
+        if (typeof aedData !== 'undefined' && aedData.productCategories) { 
+            aedData.productCategories.forEach(function(category) { 
                 categoryOptions += '<option value="' + category.id + '">' + category.name + '</option>';
             });
         }
@@ -116,10 +116,12 @@ jQuery(document).ready(function($) {
 
         var newItem = `
             <div class="aed-repeater-item">
-                <label>Product Categories:<br/> <select name="aed_settings_adv[category_domain_discounts][${catDomainCounter}][category_ids][]" multiple="multiple">
+                <label>Product Categories:<br/> 
+                    <select name="aed_settings_adv[category_domain_discounts][${catDomainCounter}][category_ids][]" multiple="multiple" 
+                            class="wc-enhanced-select" data-placeholder="Select product categories...">
                         ${categoryOptions}
                     </select>
-                </label>
+                    </label>
                 <label>Allowed Domain:<br/>
                     <input type="text" name="aed_settings_adv[category_domain_discounts][${catDomainCounter}][domain]" placeholder="example.com" />
                 </label>
@@ -137,14 +139,21 @@ jQuery(document).ready(function($) {
             </div>`;
         repeater.append(newItem);
         catDomainCounter++;
+        
+        // --- (START) NEW v2.2.0: Initialize Select2 on new element ---
+        $( document.body ).trigger( 'wc-enhanced-select-init' );
+        // --- (END) NEW v2.2.0 ---
     });
 
     // Category-Domain remove button
     $('body').on('click', '.aed-remove-rule-cat-domain', function() {
+        // --- (START) NEW v2.2.0: Destroy Select2 instance ---
+        $(this).closest('.aed-repeater-item').find('.wc-enhanced-select').select2('destroy');
+        // --- (END) NEW v2.2.0 ---
         $(this).closest('.aed-repeater-item').remove();
     });
 
-    // --- (MODIFIED v2.1.0) Product Category-Specific Email Discounts (Table UI) ---
+    // --- (MODIFIED v2.2.0) Product Category-Specific Email Discounts (Table UI) ---
     let catEmailCounter = $('#aed-category-email-discounts-tbody tr').length;
     var catEmailTableBody = $('#aed-category-email-discounts-tbody');
 
@@ -154,10 +163,11 @@ jQuery(document).ready(function($) {
         var newItem = `
             <tr>
                 <td>
-                    <select name="aed_settings_adv[category_email_discounts][${catEmailCounter}][category_ids][]" multiple="multiple">
+                    <select name="aed_settings_adv[category_email_discounts][${catEmailCounter}][category_ids][]" multiple="multiple" 
+                            class="wc-enhanced-select" data-placeholder="Select product categories...">
                         ${categoryOptions}
                     </select>
-                </td>
+                    </td>
                 <td>
                     <input type="email" name="aed_settings_adv[category_email_discounts][${catEmailCounter}][email]" placeholder="user@example.com" />
                 </td>
@@ -179,14 +189,22 @@ jQuery(document).ready(function($) {
             </tr>`;
         catEmailTableBody.append(newItem);
         catEmailCounter++; 
+        
+        // --- (START) NEW v2.2.0: Initialize Select2 on new element ---
+        $( document.body ).trigger( 'wc-enhanced-select-init' );
+        // --- (END) NEW v2.2.0 ---
     });
 
     // Category-Email remove button
     $('body').on('click', '.aed-remove-rule-cat-email', function() {
+        // --- (START) NEW v2.2.0: Destroy Select2 instance ---
+        $(this).closest('tr').find('.wc-enhanced-select').select2('destroy');
+        // --- (END) NEW v2.2.0 ---
         $(this).closest('tr').remove();
     });
 
     // Live Search for Category-Email Table
+    // (This should still work as it reads the underlying select's value)
     $('#aed-category-email-search').on('keyup', function() {
         var searchTerm = $(this).val().toLowerCase();
 
@@ -214,4 +232,7 @@ jQuery(document).ready(function($) {
         });
     });
 
+    // --- (START) NEW v2.2.0: Initialize Select2 on existing elements on page load ---
+    $( document.body ).trigger( 'wc-enhanced-select-init' );
+    // --- (END) NEW v2.2.0 ---
 });
