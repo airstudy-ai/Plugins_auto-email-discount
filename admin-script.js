@@ -80,23 +80,65 @@ jQuery(document).ready(function($) {
 
         emailTableBody.find('tr').each(function() {
             var row = $(this);
-            
+
             // Get values from all searchable fields
             var emailVal = row.find('input[type="email"]').val().toLowerCase();
             var percentVal = row.find('input[type="number"]').val().toLowerCase();
             var productIdsVal = row.find('input.aed-product-ids-input').val().toLowerCase();
             var adminNoteVal = row.find('input.aed-product-note-input').val().toLowerCase();
-            
+
             // Check if the search term is in ANY of the fields
-            if (emailVal.includes(searchTerm) || 
-                percentVal.includes(searchTerm) || 
-                productIdsVal.includes(searchTerm) || 
-                adminNoteVal.includes(searchTerm)) 
+            if (emailVal.includes(searchTerm) ||
+                percentVal.includes(searchTerm) ||
+                productIdsVal.includes(searchTerm) ||
+                adminNoteVal.includes(searchTerm))
             {
                 row.show();
             } else {
                 row.hide();
             }
         });
+    });
+
+    // --- Course Category Discounts Repeater ---
+    let categoryCounter = $('#aed-course-category-discounts-repeater .aed-repeater-item').length;
+
+    $('#aed-add-category-rule').on('click', function() {
+        var repeater = $('#aed-course-category-discounts-repeater');
+
+        // Build category options from localized data
+        var categoryOptions = '<option value="">-- Select Category --</option>';
+        if (typeof aedData !== 'undefined' && aedData.courseCategories) {
+            aedData.courseCategories.forEach(function(category) {
+                categoryOptions += '<option value="' + category.id + '">' + category.name + '</option>';
+            });
+        }
+
+        var newItem = `
+            <div class="aed-repeater-item">
+                <label>Course Category:<br/>
+                    <select name="aed_settings_adv[course_category_discounts][${categoryCounter}][category_id]" style="min-width: 200px;">
+                        ${categoryOptions}
+                    </select>
+                </label>
+                <label>Percentage (%):<br/>
+                    <input type="number" name="aed_settings_adv[course_category_discounts][${categoryCounter}][percentage]" value="10" min="0" max="100" step="0.01" style="width: 70px;" />
+                </label>
+                <label>One-time:<br/>
+                    <input type="checkbox" name="aed_settings_adv[course_category_discounts][${categoryCounter}][one_time]" value="1" />
+                    One-time only
+                </label>
+                <label>Admin Note:<br/>
+                    <input type="text" class="aed-category-note-input" name="aed_settings_adv[course_category_discounts][${categoryCounter}][category_note]" placeholder="e.g. Beginner Courses" style="width: 150px;" />
+                </label>
+                <button type="button" class="button aed-remove-rule-category">Remove</button>
+            </div>`;
+        repeater.append(newItem);
+        categoryCounter++;
+    });
+
+    // Category remove button
+    $('body').on('click', '.aed-remove-rule-category', function() {
+        $(this).closest('.aed-repeater-item').remove();
     });
 });
