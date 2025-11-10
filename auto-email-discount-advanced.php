@@ -2,8 +2,8 @@
 /**
  * Plugin Name:       Auto Email Discount for WooCommerce (Domains & Specific Emails - Advanced)
  * Plugin URI:        https://example.com/plugins/auto-email-discount/
- * Description:       Automatically applies a user-defined discount for users with specific email domains OR specific email addresses in WooCommerce, with per-item discount rates, LearnDash course category discounts, and one-time options.
- * Version:           1.9.0
+ * Description:       Automatically applies a user-defined discount for users with specific email domains OR specific email addresses in WooCommerce, with per-item discount rates, WooCommerce product category discounts, and one-time options.
+ * Version:           2.1.0
  * Author:            shalom
  * Author URI:        https://example.com
  * License:           GPL v2 or later
@@ -34,13 +34,14 @@ function aed_woocommerce_not_active_notice_adv() {
     <?php
 }
 
-/** Plugin default settings */
+/** Plugin default settings (MODIFIED v2.1.0: Using product category options) */
 function aed_get_default_settings_adv() {
     return array(
         'enabled'                   => false,
         'domain_discounts'          => array(),
         'specific_email_discounts'  => array(),
-        'course_category_discounts' => array(),
+        'category_domain_discounts' => array(), // Now for product_cat
+        'category_email_discounts'  => array(), // Now for product_cat
         'discount_label'            => __( 'Special Discount', 'auto-email-discount' ),
     );
 }
@@ -75,23 +76,23 @@ function aed_plugin_init_adv() {
 }
 add_action( 'plugins_loaded', 'aed_plugin_init_adv' );
 
-/** Enqueue admin scripts for settings page */
+/** Enqueue admin scripts for settings page (MODIFIED v2.1.0: Use product_cat) */
 function aed_enqueue_admin_scripts_adv( $hook_suffix ) {
     if ( 'settings_page_' . AED_PLUGIN_SLUG !== $hook_suffix ) { return; }
 
-    // JS Version updated to 1.9.0
-    wp_enqueue_script( 'aed-admin-script', plugins_url( 'admin-script.js', AED_PLUGIN_FILE ), array( 'jquery' ), '1.9.0', true );
+    // JS Version updated to 2.1.0
+    wp_enqueue_script( 'aed-admin-script', plugins_url( 'admin-script.js', AED_PLUGIN_FILE ), array( 'jquery' ), '2.1.0', true );
 
-    // Localize script with course categories
-    $course_categories = array();
-    if ( taxonomy_exists( 'ld_course_category' ) ) {
+    // Localize script with WooCommerce product categories
+    $product_categories = array();
+    if ( taxonomy_exists( 'product_cat' ) ) { // CHANGED
         $terms = get_terms( array(
-            'taxonomy'   => 'ld_course_category',
+            'taxonomy'   => 'product_cat', // CHANGED
             'hide_empty' => false,
         ) );
         if ( ! is_wp_error( $terms ) && ! empty( $terms ) ) {
             foreach ( $terms as $term ) {
-                $course_categories[] = array(
+                $product_categories[] = array(
                     'id'   => $term->term_id,
                     'name' => $term->name,
                 );
@@ -100,7 +101,7 @@ function aed_enqueue_admin_scripts_adv( $hook_suffix ) {
     }
 
     wp_localize_script( 'aed-admin-script', 'aedData', array(
-        'courseCategories' => $course_categories,
+        'productCategories' => $product_categories, // CHANGED
     ) ); 
     
     $custom_css = "
@@ -108,15 +109,17 @@ function aed_enqueue_admin_scripts_adv( $hook_suffix ) {
         .aed-repeater-item label { margin-right: 10px; display: inline-block; vertical-align: top; }
         .aed-repeater-item .aed-product-ids-input { width: 120px; }
         .aed-repeater-item .aed-product-note-input { width: 150px; }
+        .aed-repeater-item select[multiple] { min-width: 200px; height: 100px; }
         .aed-search-wrapper { margin-bottom: 15px; }
         .aed-search-wrapper label { font-weight: 600; margin-right: 5px; }
-        #aed-email-search { width: 300px; }
+        #aed-email-search, #aed-category-email-search { width: 300px; }
         .wp-list-table th { padding-left: 10px !important; }
         .wp-list-table td { vertical-align: middle; padding: 8px 10px; }
         .wp-list-table input[type=\"number\"] { width: 70px; }
         .wp-list-table input[type=\"email\"] { width: 100%; max-width: 250px; }
         .wp-list-table .aed-product-ids-input { width: 100%; max-width: 120px; }
         .wp-list-table .aed-product-note-input { width: 100%; max-width: 200px; }
+        .wp-list-table select[multiple] { width: 100%; height: 100px; min-width: 180px; }
         .aed-helper-link { font-style: italic; font-size: 12px; }
     ";
     wp_add_inline_style( 'wp-admin', $custom_css );
@@ -139,7 +142,7 @@ function aed_settings_page_callback_adv() {
     <?php
 }
 
-/** Register settings and fields */
+/** Register settings and fields (MODIFIED v2.1.0: Renamed category sections) */
 function aed_register_settings_adv() {
     register_setting( AED_PLUGIN_SLUG, AED_OPTION_NAME, 'aed_sanitize_settings_adv' ); 
 
@@ -153,8 +156,13 @@ function aed_register_settings_adv() {
     add_settings_section( 'aed_specific_email_discounts_section_adv', __( 'Specific Email Discounts', 'auto-email-discount' ), null, AED_PLUGIN_SLUG );
     add_settings_field( 'aed_specific_email_discounts_adv', __( 'Discount Rules for Specific Emails', 'auto-email-discount' ), 'aed_render_specific_email_discounts_field_adv', AED_PLUGIN_SLUG, 'aed_specific_email_discounts_section_adv' );
 
-    add_settings_section( 'aed_course_category_discounts_section_adv', __( 'LearnDash Course Category Discounts', 'auto-email-discount' ), null, AED_PLUGIN_SLUG );
-    add_settings_field( 'aed_course_category_discounts_adv', __( 'Discount Rules by Course Category', 'auto-email-discount' ), 'aed_render_course_category_discounts_field_adv', AED_PLUGIN_SLUG, 'aed_course_category_discounts_section_adv' );
+    // CHANGED Section 1 for Categories (Category-Domain)
+    add_settings_section( 'aed_category_domain_discounts_section_adv', __( 'Product Category-Domain Discounts', 'auto-email-discount' ), null, AED_PLUGIN_SLUG );
+    add_settings_field( 'aed_category_domain_discounts_adv', __( 'Rules by Product Category & Domain', 'auto-email-discount' ), 'aed_render_category_domain_discounts_field_adv', AED_PLUGIN_SLUG, 'aed_category_domain_discounts_section_adv' );
+    
+    // CHANGED Section 2 for Categories (Category-Email)
+    add_settings_section( 'aed_category_email_discounts_section_adv', __( 'Product Category-Specific Email Discounts', 'auto-email-discount' ), null, AED_PLUGIN_SLUG );
+    add_settings_field( 'aed_category_email_discounts_adv', __( 'Rules by Product Category & Specific Email', 'auto-email-discount' ), 'aed_render_category_email_discounts_field_adv', AED_PLUGIN_SLUG, 'aed_category_email_discounts_section_adv' );
 }
 
 /** Helper to get option values */
@@ -271,68 +279,127 @@ function aed_render_specific_email_discounts_field_adv() {
     <?php
 }
 
-/** Render Repeater Fields for Course Category Discounts */
-function aed_render_course_category_discounts_field_adv() {
-    $course_category_discounts = aed_get_option_value_adv( 'course_category_discounts', array() );
+/**
+ * MODIFIED (v2.1.0): Render Repeater Fields for Product Category-Domain Discounts
+ */
+function aed_render_category_domain_discounts_field_adv() {
+    $cat_domain_discounts = aed_get_option_value_adv( 'category_domain_discounts', array() );
 
-    // Get LearnDash course categories
-    $course_categories = array();
-    if ( taxonomy_exists( 'ld_course_category' ) ) {
-        $terms = get_terms( array(
-            'taxonomy'   => 'ld_course_category',
-            'hide_empty' => false,
-        ) );
+    // Get WooCommerce product categories
+    $product_categories = array();
+    if ( taxonomy_exists( 'product_cat' ) ) { // CHANGED
+        $terms = get_terms( array( 'taxonomy' => 'product_cat', 'hide_empty' => false ) ); // CHANGED
         if ( ! is_wp_error( $terms ) && ! empty( $terms ) ) {
-            $course_categories = $terms;
+            $product_categories = $terms;
         }
     }
     ?>
-    <div id="aed-course-category-discounts-repeater">
-        <?php if ( ! empty( $course_category_discounts ) && is_array( $course_category_discounts ) ) : ?>
-            <?php foreach ( $course_category_discounts as $index => $rule ) : if (is_array($rule) && isset($rule['category_id']) && isset($rule['percentage'])) : ?>
+    <div id="aed-category-domain-discounts-repeater">
+        <?php if ( ! empty( $cat_domain_discounts ) && is_array( $cat_domain_discounts ) ) : ?>
+            <?php foreach ( $cat_domain_discounts as $index => $rule ) : if (is_array($rule) && isset($rule['domain']) && isset($rule['percentage'])) : ?>
+                <?php $saved_cat_ids = isset( $rule['category_ids'] ) && is_array( $rule['category_ids'] ) ? $rule['category_ids'] : array(); ?>
                 <div class="aed-repeater-item">
-                    <label><?php _e( 'Course Category:', 'auto-email-discount' ); ?><br/>
-                        <select name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[course_category_discounts][<?php echo $index; ?>][category_id]" style="min-width: 200px;">
-                            <option value=""><?php _e( '-- Select Category --', 'auto-email-discount' ); ?></option>
-                            <?php foreach ( $course_categories as $term ) : ?>
-                                <option value="<?php echo esc_attr( $term->term_id ); ?>" <?php selected( $rule['category_id'], $term->term_id ); ?>>
+                    <label><?php _e( 'Product Categories:', 'auto-email-discount' ); ?><br/> <select name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[category_domain_discounts][<?php echo $index; ?>][category_ids][]" multiple="multiple">
+                            <option value=""><?php _e( '-- Select Product Categories --', 'auto-email-discount' ); ?></option> <?php foreach ( $product_categories as $term ) : ?> <option value="<?php echo esc_attr( $term->term_id ); ?>" <?php selected( in_array( $term->term_id, $saved_cat_ids ), true ); ?>>
                                     <?php echo esc_html( $term->name ); ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
                     </label>
+                    <label><?php _e( 'Allowed Domain:', 'auto-email-discount' ); ?><br/>
+                        <input type="text" name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[category_domain_discounts][<?php echo $index; ?>][domain]" value="<?php echo esc_attr( $rule['domain'] ); ?>" placeholder="example.com" />
+                    </label>
                     <label><?php _e( 'Percentage (%):', 'auto-email-discount' ); ?><br/>
-                        <input type="number" name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[course_category_discounts][<?php echo $index; ?>][percentage]" value="<?php echo esc_attr( $rule['percentage'] ); ?>" min="0" max="100" step="0.01" style="width: 70px;" />
+                        <input type="number" name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[category_domain_discounts][<?php echo $index; ?>][percentage]" value="<?php echo esc_attr( $rule['percentage'] ); ?>" min="0" max="100" step="0.01" style="width: 70px;" />
                     </label>
                     <label><?php _e( 'One-time:', 'auto-email-discount' ); ?><br/>
-                        <input type="checkbox" name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[course_category_discounts][<?php echo $index; ?>][one_time]" value="1" <?php checked( 1, isset( $rule['one_time'] ) ? $rule['one_time'] : 0 ); ?> />
+                        <input type="checkbox" name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[category_domain_discounts][<?php echo $index; ?>][one_time]" value="1" <?php checked( 1, isset( $rule['one_time'] ) ? $rule['one_time'] : 0 ); ?> />
                         <?php _e( 'One-time only', 'auto-email-discount' ); ?>
                     </label>
                     <label><?php _e( 'Admin Note:', 'auto-email-discount' ); ?><br/>
-                        <input type="text" class="aed-category-note-input" name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[course_category_discounts][<?php echo $index; ?>][category_note]" value="<?php echo esc_attr( isset( $rule['category_note'] ) ? $rule['category_note'] : '' ); ?>" placeholder="e.g. Beginner Courses" style="width: 150px;" />
+                        <input type="text" class="aed-category-note-input" name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[category_domain_discounts][<?php echo $index; ?>][category_note]" value="<?php echo esc_attr( isset( $rule['category_note'] ) ? $rule['category_note'] : '' ); ?>" placeholder="e.g. Beginner Courses" style="width: 150px;" />
                     </label>
-                    <br/>
-                    <label><?php _e( 'Allowed Domains (optional):', 'auto-email-discount' ); ?><br/>
-                        <input type="text" class="aed-allowed-domains-input" name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[course_category_discounts][<?php echo $index; ?>][allowed_domains]" value="<?php echo esc_attr( isset( $rule['allowed_domains'] ) ? $rule['allowed_domains'] : '' ); ?>" placeholder="e.g. example.com, test.org" style="width: 250px;" />
-                    </label>
-                    <label><?php _e( 'Allowed Emails (optional):', 'auto-email-discount' ); ?><br/>
-                        <input type="text" class="aed-allowed-emails-input" name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[course_category_discounts][<?php echo $index; ?>][allowed_emails]" value="<?php echo esc_attr( isset( $rule['allowed_emails'] ) ? $rule['allowed_emails'] : '' ); ?>" placeholder="e.g. user@example.com, admin@test.org" style="width: 300px;" />
-                    </label>
-                    <button type="button" class="button aed-remove-rule-category"><?php _e( 'Remove', 'auto-email-discount' ); ?></button>
+                    <button type="button" class="button aed-remove-rule-cat-domain"><?php _e( 'Remove', 'auto-email-discount' ); ?></button>
                 </div>
             <?php endif; endforeach; ?>
         <?php endif; ?>
     </div>
-    <button type="button" id="aed-add-category-rule" class="button"><?php _e( 'Add Category Rule', 'auto-email-discount' ); ?></button>
-    <p class="description"><?php _e( 'Add LearnDash course categories and their specific discount percentages. Discounts will apply to all courses in the selected category.', 'auto-email-discount' ); ?></p>
-    <p class="description"><?php _e( '<strong>Allowed Domains/Emails:</strong> Leave blank to apply to all users, or enter comma-separated domains (e.g., "example.com, test.org") or specific emails (e.g., "user@example.com, admin@test.org") to restrict the discount to those users only.', 'auto-email-discount' ); ?></p>
-    <?php if ( empty( $course_categories ) ) : ?>
-        <p class="notice notice-warning inline" style="padding: 10px;">
-            <?php _e( 'No LearnDash course categories found. Please ensure LearnDash is installed and course categories are created.', 'auto-email-discount' ); ?>
-        </p>
+    <button type="button" id="aed-add-category-domain-rule" class="button"><?php _e( 'Add Product Category-Domain Rule', 'auto-email-discount' ); ?></button> <p class="description"><?php _e( 'Apply a discount to selected WooCommerce product categories for users from a specific email domain.', 'auto-email-discount' ); ?></p> <?php if ( empty( $product_categories ) ) : ?> <p class="notice notice-warning inline" style="padding: 10px;">
+            <?php _e( 'No WooCommerce product categories found.', 'auto-email-discount' ); ?> </p>
     <?php endif; ?>
     <?php
 }
+
+/**
+ * MODIFIED (v2.1.0): Render Table Fields for Product Category-Email Discounts
+ */
+function aed_render_category_email_discounts_field_adv() {
+    $cat_email_discounts = aed_get_option_value_adv( 'category_email_discounts', array() );
+
+    // Get WooCommerce product categories
+    $product_categories = array();
+    if ( taxonomy_exists( 'product_cat' ) ) { // CHANGED
+        $terms = get_terms( array( 'taxonomy' => 'product_cat', 'hide_empty' => false ) ); // CHANGED
+        if ( ! is_wp_error( $terms ) && ! empty( $terms ) ) {
+            $product_categories = $terms;
+        }
+    }
+    ?>
+    <div class="aed-search-wrapper">
+        <label for="aed-category-email-search"><?php _e( 'Search Rules:', 'auto-email-discount' ); ?></label> <input type="search" id="aed-category-email-search" class="regular-text" placeholder="<?php _e( 'Type to filter by Category, Email, %, or Note...', 'auto-email-discount' ); ?>"> </div>
+
+    <table class="wp-list-table widefat striped" id="aed-category-email-table">
+        <thead>
+            <tr>
+                <th scope="col" style="width: 25%;"><?php _e( 'Product Categories', 'auto-email-discount' ); ?></th> <th scope="col" style="width: 25%;"><?php _e( 'Allowed Email', 'auto-email-discount' ); ?></th>
+                <th scope="col" style="width: 100px;"><?php _e( 'Percentage (%)', 'auto-email-discount' ); ?></th>
+                <th scope="col" style="width: 120px;"><?php _e( 'One-time only', 'auto-email-discount' ); ?></th>
+                <th scope="col"><?php _e( 'Admin Note', 'auto-email-discount' ); ?></th>
+                <th scope="col" style="width: 80px;"><?php _e( 'Actions', 'auto-email-discount' ); ?></th>
+            </tr>
+        </thead>
+        <tbody id="aed-category-email-discounts-tbody">
+            <?php if ( ! empty( $cat_email_discounts ) && is_array( $cat_email_discounts ) ) : ?>
+                <?php foreach ( $cat_email_discounts as $index => $rule ) : if (is_array($rule) && isset($rule['email']) && isset($rule['percentage'])) : ?>
+                     <?php $saved_cat_ids = isset( $rule['category_ids'] ) && is_array( $rule['category_ids'] ) ? $rule['category_ids'] : array(); ?>
+                    <tr>
+                        <td>
+                            <select name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[category_email_discounts][<?php echo $index; ?>][category_ids][]" multiple="multiple">
+                                <option value=""><?php _e( '-- Select Product Categories --', 'auto-email-discount' ); ?></option> <?php foreach ( $product_categories as $term ) : ?> <option value="<?php echo esc_attr( $term->term_id ); ?>" <?php selected( in_array( $term->term_id, $saved_cat_ids ), true ); ?>>
+                                        <?php echo esc_html( $term->name ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </td>
+                        <td>
+                            <input type="email" name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[category_email_discounts][<?php echo $index; ?>][email]" value="<?php echo esc_attr( $rule['email'] ); ?>" placeholder="user@example.com" />
+                        </td>
+                        <td>
+                            <input type="number" name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[category_email_discounts][<?php echo $index; ?>][percentage]" value="<?php echo esc_attr( $rule['percentage'] ); ?>" min="0" max="100" step="0.01" />
+                        </td>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[category_email_discounts][<?php echo $index; ?>][one_time]" value="1" <?php checked( 1, isset( $rule['one_time'] ) ? $rule['one_time'] : 0 ); ?> />
+                                <?php _e( 'Yes', 'auto-email-discount' ); ?>
+                            </label>
+                        </td>
+                        <td>
+                            <input type="text" class="aed-category-note-input" name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[category_email_discounts][<?php echo $index; ?>][category_note]" value="<?php echo esc_attr( isset( $rule['category_note'] ) ? $rule['category_note'] : '' ); ?>" placeholder="e.g. Intro Course" style="width: 100%;" />
+                        </td>
+                        <td>
+                            <button type="button" class="button aed-remove-rule-cat-email"><?php _e( 'Remove', 'auto-email-discount' ); ?></button>
+                        </td>
+                    </tr>
+                <?php endif; endforeach; ?>
+            <?php endif; ?>
+        </tbody>
+    </table>
+    <button type="button" id="aed-add-category-email-rule" class="button" style="margin-top: 10px;"><?php _e( 'Add Product Category-Email Rule', 'auto-email-discount' ); ?></button> <p class="description"><?php _e( 'Apply a discount to selected WooCommerce product categories for users with a specific email address.', 'auto-email-discount' ); ?></p> <?php if ( empty( $product_categories ) ) : ?> <p class="notice notice-warning inline" style="padding: 10px;">
+            <?php _e( 'No WooCommerce product categories found.', 'auto-email-discount' ); ?> </p>
+    <?php endif; ?>
+    <?php
+}
+
 
 /** Helper function for sorting email rules by domain, then user ID. */
 function aed_sort_email_rules_callback( $a, $b ) {
@@ -347,7 +414,7 @@ function aed_sort_email_rules_callback( $a, $b ) {
     return strcmp( $user_a, $user_b );
 }
 
-/** Sanitize and validate settings before saving (with Admin Note) */
+/** Sanitize and validate settings before saving (MODIFIED v2.1.0: Validate product_cat) */
 function aed_sanitize_settings_adv( $input ) {
     $new_input = array();
     $default_settings = aed_get_default_settings_adv();
@@ -410,37 +477,83 @@ function aed_sanitize_settings_adv( $input ) {
         usort( $new_input['specific_email_discounts'], 'aed_sort_email_rules_callback' );
     }
 
-    // Sanitize course category discounts
-    $new_input['course_category_discounts'] = array();
-    if ( isset( $input['course_category_discounts'] ) && is_array( $input['course_category_discounts'] ) ) {
-        foreach ( $input['course_category_discounts'] as $rule_candidate ) {
+    // Sanitize Category-Domain discounts
+    $new_input['category_domain_discounts'] = array();
+    if ( isset( $input['category_domain_discounts'] ) && is_array( $input['category_domain_discounts'] ) ) {
+        foreach ( $input['category_domain_discounts'] as $rule_candidate ) {
             if ( is_array( $rule_candidate ) &&
-                 ! empty( $rule_candidate['category_id'] ) &&
+                 ! empty( $rule_candidate['category_ids'] ) && is_array( $rule_candidate['category_ids'] ) &&
+                 ! empty( $rule_candidate['domain'] ) &&
                  isset( $rule_candidate['percentage'] ) && $rule_candidate['percentage'] !== '' ) {
-
-                $category_id = intval( $rule_candidate['category_id'] );
+                
+                $domain_value = strtolower( sanitize_text_field( trim( $rule_candidate['domain'] ) ) );
                 $percentage_value = trim( $rule_candidate['percentage'] );
 
-                // Verify the category exists
-                if ( $category_id > 0 && term_exists( $category_id, 'ld_course_category' ) ) {
-                    $new_input['course_category_discounts'][] = array(
-                        'category_id'      => $category_id,
+                // Sanitize category IDs
+                $sanitized_cat_ids = array();
+                foreach( $rule_candidate['category_ids'] as $cat_id ) {
+                    $cat_id = intval( $cat_id );
+                    if ( $cat_id > 0 && term_exists( $cat_id, 'product_cat' ) ) { // CHANGED
+                        $sanitized_cat_ids[] = $cat_id;
+                    }
+                }
+
+                if ( !empty($sanitized_cat_ids) && !empty($domain_value) && preg_match( '/^([a-z0-9]+(?:-[a-z0-9]+)*\.)+[a-z]{2,}$/i', $domain_value ) === 1 ) {
+                    $new_input['category_domain_discounts'][] = array(
+                        'category_ids'     => $sanitized_cat_ids,
+                        'domain'           => $domain_value,
                         'percentage'       => max( 0, min( 100, floatval( $percentage_value ) ) ),
                         'one_time'         => isset( $rule_candidate['one_time'] ) ? 1 : 0,
                         'category_note'    => isset( $rule_candidate['category_note'] ) ? sanitize_text_field( $rule_candidate['category_note'] ) : '',
-                        'allowed_domains'  => isset( $rule_candidate['allowed_domains'] ) ? sanitize_text_field( $rule_candidate['allowed_domains'] ) : '',
-                        'allowed_emails'   => isset( $rule_candidate['allowed_emails'] ) ? sanitize_text_field( $rule_candidate['allowed_emails'] ) : '',
                     );
                 }
             }
         }
     }
 
+    // Sanitize Category-Email discounts
+    $new_input['category_email_discounts'] = array();
+    if ( isset( $input['category_email_discounts'] ) && is_array( $input['category_email_discounts'] ) ) {
+        foreach ( $input['category_email_discounts'] as $rule_candidate ) {
+            if ( is_array( $rule_candidate ) &&
+                 ! empty( $rule_candidate['category_ids'] ) && is_array( $rule_candidate['category_ids'] ) &&
+                 ! empty( $rule_candidate['email'] ) &&
+                 isset( $rule_candidate['percentage'] ) && $rule_candidate['percentage'] !== '' ) {
+
+                $email_value = strtolower( sanitize_email( trim( $rule_candidate['email'] ) ) );
+                $percentage_value = trim( $rule_candidate['percentage'] );
+
+                // Sanitize category IDs
+                $sanitized_cat_ids = array();
+                foreach( $rule_candidate['category_ids'] as $cat_id ) {
+                    $cat_id = intval( $cat_id );
+                    if ( $cat_id > 0 && term_exists( $cat_id, 'product_cat' ) ) { // CHANGED
+                        $sanitized_cat_ids[] = $cat_id;
+                    }
+                }
+                
+                if ( !empty($sanitized_cat_ids) && is_email( $email_value ) ) { 
+                    $new_input['category_email_discounts'][] = array(
+                        'category_ids'   => $sanitized_cat_ids,
+                        'email'          => $email_value,
+                        'percentage'     => max( 0, min( 100, floatval( $percentage_value ) ) ),
+                        'one_time'       => isset( $rule_candidate['one_time'] ) ? 1 : 0,
+                        'category_note'  => isset( $rule_candidate['category_note'] ) ? sanitize_text_field( $rule_candidate['category_note'] ) : '',
+                    );
+                }
+            }
+        }
+    }
+    
+    if ( ! empty( $new_input['category_email_discounts'] ) ) {
+        usort( $new_input['category_email_discounts'], 'aed_sort_email_rules_callback' );
+    }
+
     return $new_input;
 }
 
 
-/** Core discount logic (No change from v1.7.0) */
+/** Core discount logic (MODIFIED v2.1.0: Use product_cat) */
 function aed_apply_email_based_discount_adv( $cart ) {
     if ( is_admin() && ! defined( 'DOING_AJAX' ) ) { return; }
 
@@ -453,10 +566,12 @@ function aed_apply_email_based_discount_adv( $cart ) {
 
     $domain_discounts = ! empty( $settings['domain_discounts'] ) && is_array($settings['domain_discounts']) ? $settings['domain_discounts'] : array();
     $specific_email_discounts = ! empty( $settings['specific_email_discounts'] ) && is_array($settings['specific_email_discounts']) ? $settings['specific_email_discounts'] : array();
-    $course_category_discounts = ! empty( $settings['course_category_discounts'] ) && is_array($settings['course_category_discounts']) ? $settings['course_category_discounts'] : array();
+    $category_domain_discounts = ! empty( $settings['category_domain_discounts'] ) && is_array($settings['category_domain_discounts']) ? $settings['category_domain_discounts'] : array();
+    $category_email_discounts = ! empty( $settings['category_email_discounts'] ) && is_array($settings['category_email_discounts']) ? $settings['category_email_discounts'] : array();
+    
     $base_discount_label = ! empty( $settings['discount_label'] ) ? $settings['discount_label'] : __( 'Special Discount', 'auto-email-discount' );
 
-    if ( empty( $domain_discounts ) && empty( $specific_email_discounts ) && empty( $course_category_discounts ) ) { return; }
+    if ( empty( $domain_discounts ) && empty( $specific_email_discounts ) && empty( $category_domain_discounts ) && empty( $category_email_discounts ) ) { return; }
 
     $user_email_raw = '';
     if ( is_user_logged_in() ) {
@@ -470,9 +585,17 @@ function aed_apply_email_based_discount_adv( $cart ) {
     if ( empty( $user_email_raw ) ) { return; }
 
     $user_email_lc = strtolower( $user_email_raw );
+    $user_domain = '';
+    $user_email_domain_parts = explode( '@', $user_email_lc );
+    if (count($user_email_domain_parts) > 1) {
+        $user_domain = array_pop( $user_email_domain_parts );
+    }
+
     $found_discount_percentage = 0;
     $found_is_one_time = false; 
     $found_product_ids_string = ''; 
+    $found_matching_rule_type = ''; 
+    $found_category_ids_to_apply = array(); 
 
     $used_emails = get_option( AED_USED_EMAILS_OPTION, array() );
 
@@ -499,6 +622,7 @@ function aed_apply_email_based_discount_adv( $cart ) {
                     $found_discount_percentage = floatval( $rule['percentage'] );
                     $found_is_one_time = $is_one_time;
                     $found_product_ids_string = isset( $rule['product_ids'] ) ? $rule['product_ids'] : '';
+                    $found_matching_rule_type = 'product'; 
                     break; 
                 }
             }
@@ -506,107 +630,107 @@ function aed_apply_email_based_discount_adv( $cart ) {
     }
 
     // 2. Check Domain Emails
-    if ( $found_discount_percentage <= 0 && !empty( $domain_discounts ) ) {
-        $user_email_domain_parts = explode( '@', $user_email_lc );
-        if (count($user_email_domain_parts) > 1) {
-            $user_domain = array_pop( $user_email_domain_parts );
-            foreach ( $domain_discounts as $rule ) {
-                 if (isset($rule['domain']) && isset($rule['percentage'])) {
-                    if ( $user_domain === $rule['domain'] ) {
-                        $is_one_time = isset( $rule['one_time'] ) ? $rule['one_time'] : 0;
+    if ( $found_discount_percentage <= 0 && !empty( $domain_discounts ) && !empty($user_domain) ) {
+        foreach ( $domain_discounts as $rule ) {
+             if (isset($rule['domain']) && isset($rule['percentage'])) {
+                if ( $user_domain === $rule['domain'] ) {
+                    $is_one_time = isset( $rule['one_time'] ) ? $rule['one_time'] : 0;
 
-                        if ( $is_one_time && in_array( $user_email_lc, $used_emails ) ) {
-                            $found_discount_percentage = 0;
-                            $found_is_one_time = false;
-                            break;
-                        }
-
-                        $found_discount_percentage = floatval( $rule['percentage'] );
-                        $found_is_one_time = $is_one_time;
-                        $found_product_ids_string = isset( $rule['product_ids'] ) ? $rule['product_ids'] : '';
+                    if ( $is_one_time && in_array( $user_email_lc, $used_emails ) ) {
+                        $found_discount_percentage = 0;
+                        $found_is_one_time = false;
                         break;
                     }
+
+                    $found_discount_percentage = floatval( $rule['percentage'] );
+                    $found_is_one_time = $is_one_time;
+                    $found_product_ids_string = isset( $rule['product_ids'] ) ? $rule['product_ids'] : '';
+                    $found_matching_rule_type = 'product'; 
+                    break;
                 }
             }
         }
     }
 
-    // 3. Check Course Category Discounts
-    $found_category_id = 0;
-    if ( $found_discount_percentage <= 0 && !empty( $course_category_discounts ) ) {
-        // Check if any cart items are LearnDash courses in the configured categories
+    // 3. Check Category-Based Discounts (if no product/cart discount found yet)
+    $best_category_discount = 0;
+    $best_category_rule = null;
+    $best_matching_category_ids = array();
+
+    if ( $found_discount_percentage <= 0 && ( !empty( $category_email_discounts ) || !empty( $category_domain_discounts ) ) ) {
+        
         foreach ( $cart->get_cart() as $cart_item ) {
+            
+            // --- LOGIC CHANGED (v2.1.0) ---
+            // Get product categories directly from the product ID
             $product_id = $cart_item['product_id'];
+            $product_terms = wp_get_post_terms( $product_id, 'product_cat', array( 'fields' => 'ids' ) );
 
-            // Check if this product is a LearnDash course
-            $course_id = get_post_meta( $product_id, '_related_course', true );
-            if ( empty( $course_id ) ) {
-                // Some setups link products directly to courses, check alternative method
-                $course_id = $product_id;
-                if ( get_post_type( $course_id ) !== 'sfwd-courses' ) {
-                    continue; // Not a course
-                }
+            if ( is_wp_error( $product_terms ) || empty( $product_terms ) ) {
+                continue; // Product has no categories
             }
+            // --- END OF LOGIC CHANGE ---
 
-            // Get course categories
-            $course_terms = wp_get_post_terms( $course_id, 'ld_course_category', array( 'fields' => 'ids' ) );
-            if ( is_wp_error( $course_terms ) || empty( $course_terms ) ) {
-                continue;
-            }
+            // 3a. Check Category-Email rules (highest priority)
+            if ( !empty( $category_email_discounts ) ) {
+                foreach ( $category_email_discounts as $rule ) {
+                    if ( !isset($rule['email']) || $user_email_lc !== $rule['email'] ) {
+                        continue;
+                    }
 
-            // Check if course belongs to any configured category
-            foreach ( $course_category_discounts as $rule ) {
-                if ( isset( $rule['category_id'] ) && isset( $rule['percentage'] ) ) {
-                    if ( in_array( $rule['category_id'], $course_terms ) ) {
-                        // Check if domain/email restrictions apply
-                        $allowed_domains = isset( $rule['allowed_domains'] ) ? $rule['allowed_domains'] : '';
-                        $allowed_emails = isset( $rule['allowed_emails'] ) ? $rule['allowed_emails'] : '';
-
-                        $domain_match = false;
-                        $email_match = false;
-
-                        // If both are empty, allow all users
-                        if ( empty( $allowed_domains ) && empty( $allowed_emails ) ) {
-                            $domain_match = true;
-                            $email_match = true;
-                        } else {
-                            // Check allowed emails first (highest priority)
-                            if ( ! empty( $allowed_emails ) ) {
-                                $allowed_emails_array = array_map( 'trim', array_map( 'strtolower', explode( ',', $allowed_emails ) ) );
-                                if ( in_array( $user_email_lc, $allowed_emails_array ) ) {
-                                    $email_match = true;
-                                }
-                            }
-
-                            // Check allowed domains
-                            if ( ! empty( $allowed_domains ) ) {
-                                $user_email_domain_parts = explode( '@', $user_email_lc );
-                                if ( count( $user_email_domain_parts ) > 1 ) {
-                                    $user_domain = array_pop( $user_email_domain_parts );
-                                    $allowed_domains_array = array_map( 'trim', array_map( 'strtolower', explode( ',', $allowed_domains ) ) );
-                                    if ( in_array( $user_domain, $allowed_domains_array ) ) {
-                                        $domain_match = true;
-                                    }
-                                }
-                            }
+                    $rule_cat_ids = isset( $rule['category_ids'] ) && is_array( $rule['category_ids'] ) ? $rule['category_ids'] : array();
+                    $matching_cats = array_intersect( $rule_cat_ids, $product_terms ); // CHANGED
+                    
+                    if ( ! empty( $matching_cats ) ) {
+                        $is_one_time = isset( $rule['one_time'] ) ? $rule['one_time'] : 0;
+                        if ( $is_one_time && in_array( $user_email_lc, $used_emails ) ) {
+                            continue; 
                         }
 
-                        // Only apply discount if domain or email matches (or no restrictions set)
-                        if ( $domain_match || $email_match ) {
-                            $is_one_time = isset( $rule['one_time'] ) ? $rule['one_time'] : 0;
-
-                            if ( $is_one_time && in_array( $user_email_lc, $used_emails ) ) {
-                                continue; // Skip this rule
-                            }
-
-                            $found_discount_percentage = floatval( $rule['percentage'] );
-                            $found_is_one_time = $is_one_time;
-                            $found_category_id = $rule['category_id'];
-                            break 2; // Break out of both loops
+                        $current_percentage = floatval( $rule['percentage'] );
+                        if ( $current_percentage > $best_category_discount ) {
+                            $best_category_discount = $current_percentage;
+                            $best_category_rule = $rule;
+                            $best_matching_category_ids = $rule_cat_ids;
                         }
                     }
                 }
             }
+
+            // 3b. Check Category-Domain rules
+            if ( !empty( $category_domain_discounts ) && !empty($user_domain) ) {
+                 foreach ( $category_domain_discounts as $rule ) {
+                    if ( !isset($rule['domain']) || $user_domain !== $rule['domain'] ) {
+                        continue;
+                    }
+
+                    $rule_cat_ids = isset( $rule['category_ids'] ) && is_array( $rule['category_ids'] ) ? $rule['category_ids'] : array();
+                    $matching_cats = array_intersect( $rule_cat_ids, $product_terms ); // CHANGED
+                    
+                    if ( ! empty( $matching_cats ) ) {
+                        $is_one_time = isset( $rule['one_time'] ) ? $rule['one_time'] : 0;
+                        if ( $is_one_time && in_array( $user_email_lc, $used_emails ) ) {
+                            continue; 
+                        }
+
+                        $current_percentage = floatval( $rule['percentage'] );
+                        if ( $current_percentage > $best_category_discount ) {
+                            $best_category_discount = $current_percentage;
+                            $best_category_rule = $rule;
+                            $best_matching_category_ids = $rule_cat_ids;
+                        }
+                    }
+                }
+            }
+        } // end foreach cart item
+
+        // Now set the found category discount if it's the best
+        if ( $best_category_discount > 0 && $best_category_rule !== null ) {
+            $found_discount_percentage = $best_category_discount;
+            $found_is_one_time = isset( $best_category_rule['one_time'] ) ? $best_category_rule['one_time'] : 0;
+            $found_matching_rule_type = 'category';
+            $found_category_ids_to_apply = $best_matching_category_ids;
+            $found_product_ids_string = ''; 
         }
     }
 
@@ -615,7 +739,7 @@ function aed_apply_email_based_discount_adv( $cart ) {
 
         $discount_base_amount = 0;
 
-        if ( ! empty( $found_product_ids_string ) ) {
+        if ( $found_matching_rule_type === 'product' && ! empty( $found_product_ids_string ) ) {
             // Product-specific discount
             $ids = explode( ',', $found_product_ids_string );
             $ids = array_map( 'trim', $ids );
@@ -629,29 +753,27 @@ function aed_apply_email_based_discount_adv( $cart ) {
                     }
                 }
             }
-        } elseif ( $found_category_id > 0 ) {
-            // Category-specific discount - apply only to courses in this category
+        } elseif ( $found_matching_rule_type === 'category' && ! empty( $found_category_ids_to_apply ) ) {
+            // Category-specific discount - apply only to products in the matching categories
             foreach ( $cart->get_cart() as $cart_item ) {
+
+                // --- LOGIC CHANGED (v2.1.0) ---
                 $product_id = $cart_item['product_id'];
+                $product_terms = wp_get_post_terms( $product_id, 'product_cat', array( 'fields' => 'ids' ) );
+                // --- END OF LOGIC CHANGE ---
 
-                // Check if this product is a LearnDash course
-                $course_id = get_post_meta( $product_id, '_related_course', true );
-                if ( empty( $course_id ) ) {
-                    $course_id = $product_id;
-                    if ( get_post_type( $course_id ) !== 'sfwd-courses' ) {
-                        continue;
-                    }
-                }
-
-                // Check if course belongs to the discount category
-                $course_terms = wp_get_post_terms( $course_id, 'ld_course_category', array( 'fields' => 'ids' ) );
-                if ( ! is_wp_error( $course_terms ) && ! empty( $course_terms ) && in_array( $found_category_id, $course_terms ) ) {
-                    $discount_base_amount += $cart_item['line_subtotal'];
+                if ( ! is_wp_error( $product_terms ) && ! empty( $product_terms ) ) {
+                     $matching_cats = array_intersect( $found_category_ids_to_apply, $product_terms ); // CHANGED
+                     if ( ! empty( $matching_cats ) ) {
+                         $discount_base_amount += $cart_item['line_subtotal'];
+                     }
                 }
             }
         } else {
-            // Cart-wide discount
-            $discount_base_amount = $cart->get_subtotal();
+            // Cart-wide discount (applies if rule type is 'product' but product ID string is empty)
+            if( $found_matching_rule_type === 'product' ) {
+                 $discount_base_amount = $cart->get_subtotal();
+            }
         }
 
         $discount_amount = round( ( $discount_base_amount * $found_discount_percentage ) / 100, wc_get_price_decimals() );
