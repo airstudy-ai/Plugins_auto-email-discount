@@ -2,8 +2,8 @@
 /**
  * Plugin Name:       Auto Email Discount for WooCommerce (Domains & Specific Emails - Advanced)
  * Plugin URI:        https://example.com/plugins/auto-email-discount/
- * Description:       Automatically applies a user-defined discount for users with specific email domains OR specific email addresses in WooCommerce, with per-item discount rates and one-time options.
- * Version:           1.7.2
+ * Description:       Automatically applies a user-defined discount for users with specific email domains OR specific email addresses in WooCommerce, with per-item discount rates, LearnDash course category discounts, and one-time options.
+ * Version:           1.8.0
  * Author:            shalom
  * Author URI:        https://example.com
  * License:           GPL v2 or later
@@ -40,6 +40,7 @@ function aed_get_default_settings_adv() {
         'enabled'                   => false,
         'domain_discounts'          => array(),
         'specific_email_discounts'  => array(),
+        'course_category_discounts' => array(),
         'discount_label'            => __( 'Special Discount', 'auto-email-discount' ),
     );
 }
@@ -77,9 +78,30 @@ add_action( 'plugins_loaded', 'aed_plugin_init_adv' );
 /** Enqueue admin scripts for settings page */
 function aed_enqueue_admin_scripts_adv( $hook_suffix ) {
     if ( 'settings_page_' . AED_PLUGIN_SLUG !== $hook_suffix ) { return; }
-    
-    // JS Version updated to 1.7.2
-    wp_enqueue_script( 'aed-admin-script', plugins_url( 'admin-script.js', AED_PLUGIN_FILE ), array( 'jquery' ), '1.7.2', true ); 
+
+    // JS Version updated to 1.8.0
+    wp_enqueue_script( 'aed-admin-script', plugins_url( 'admin-script.js', AED_PLUGIN_FILE ), array( 'jquery' ), '1.8.0', true );
+
+    // Localize script with course categories
+    $course_categories = array();
+    if ( taxonomy_exists( 'ld_course_category' ) ) {
+        $terms = get_terms( array(
+            'taxonomy'   => 'ld_course_category',
+            'hide_empty' => false,
+        ) );
+        if ( ! is_wp_error( $terms ) && ! empty( $terms ) ) {
+            foreach ( $terms as $term ) {
+                $course_categories[] = array(
+                    'id'   => $term->term_id,
+                    'name' => $term->name,
+                );
+            }
+        }
+    }
+
+    wp_localize_script( 'aed-admin-script', 'aedData', array(
+        'courseCategories' => $course_categories,
+    ) ); 
     
     $custom_css = "
         .aed-repeater-item { border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; background: #f9f9f9; } 
@@ -130,6 +152,9 @@ function aed_register_settings_adv() {
 
     add_settings_section( 'aed_specific_email_discounts_section_adv', __( 'Specific Email Discounts', 'auto-email-discount' ), null, AED_PLUGIN_SLUG );
     add_settings_field( 'aed_specific_email_discounts_adv', __( 'Discount Rules for Specific Emails', 'auto-email-discount' ), 'aed_render_specific_email_discounts_field_adv', AED_PLUGIN_SLUG, 'aed_specific_email_discounts_section_adv' );
+
+    add_settings_section( 'aed_course_category_discounts_section_adv', __( 'LearnDash Course Category Discounts', 'auto-email-discount' ), null, AED_PLUGIN_SLUG );
+    add_settings_field( 'aed_course_category_discounts_adv', __( 'Discount Rules by Course Category', 'auto-email-discount' ), 'aed_render_course_category_discounts_field_adv', AED_PLUGIN_SLUG, 'aed_course_category_discounts_section_adv' );
 }
 
 /** Helper to get option values */
@@ -246,6 +271,61 @@ function aed_render_specific_email_discounts_field_adv() {
     <?php
 }
 
+/** Render Repeater Fields for Course Category Discounts */
+function aed_render_course_category_discounts_field_adv() {
+    $course_category_discounts = aed_get_option_value_adv( 'course_category_discounts', array() );
+
+    // Get LearnDash course categories
+    $course_categories = array();
+    if ( taxonomy_exists( 'ld_course_category' ) ) {
+        $terms = get_terms( array(
+            'taxonomy'   => 'ld_course_category',
+            'hide_empty' => false,
+        ) );
+        if ( ! is_wp_error( $terms ) && ! empty( $terms ) ) {
+            $course_categories = $terms;
+        }
+    }
+    ?>
+    <div id="aed-course-category-discounts-repeater">
+        <?php if ( ! empty( $course_category_discounts ) && is_array( $course_category_discounts ) ) : ?>
+            <?php foreach ( $course_category_discounts as $index => $rule ) : if (is_array($rule) && isset($rule['category_id']) && isset($rule['percentage'])) : ?>
+                <div class="aed-repeater-item">
+                    <label><?php _e( 'Course Category:', 'auto-email-discount' ); ?><br/>
+                        <select name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[course_category_discounts][<?php echo $index; ?>][category_id]" style="min-width: 200px;">
+                            <option value=""><?php _e( '-- Select Category --', 'auto-email-discount' ); ?></option>
+                            <?php foreach ( $course_categories as $term ) : ?>
+                                <option value="<?php echo esc_attr( $term->term_id ); ?>" <?php selected( $rule['category_id'], $term->term_id ); ?>>
+                                    <?php echo esc_html( $term->name ); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label><?php _e( 'Percentage (%):', 'auto-email-discount' ); ?><br/>
+                        <input type="number" name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[course_category_discounts][<?php echo $index; ?>][percentage]" value="<?php echo esc_attr( $rule['percentage'] ); ?>" min="0" max="100" step="0.01" style="width: 70px;" />
+                    </label>
+                    <label><?php _e( 'One-time:', 'auto-email-discount' ); ?><br/>
+                        <input type="checkbox" name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[course_category_discounts][<?php echo $index; ?>][one_time]" value="1" <?php checked( 1, isset( $rule['one_time'] ) ? $rule['one_time'] : 0 ); ?> />
+                        <?php _e( 'One-time only', 'auto-email-discount' ); ?>
+                    </label>
+                    <label><?php _e( 'Admin Note:', 'auto-email-discount' ); ?><br/>
+                        <input type="text" class="aed-category-note-input" name="<?php echo esc_attr( AED_OPTION_NAME ); ?>[course_category_discounts][<?php echo $index; ?>][category_note]" value="<?php echo esc_attr( isset( $rule['category_note'] ) ? $rule['category_note'] : '' ); ?>" placeholder="e.g. Beginner Courses" style="width: 150px;" />
+                    </label>
+                    <button type="button" class="button aed-remove-rule-category"><?php _e( 'Remove', 'auto-email-discount' ); ?></button>
+                </div>
+            <?php endif; endforeach; ?>
+        <?php endif; ?>
+    </div>
+    <button type="button" id="aed-add-category-rule" class="button"><?php _e( 'Add Category Rule', 'auto-email-discount' ); ?></button>
+    <p class="description"><?php _e( 'Add LearnDash course categories and their specific discount percentages. Discounts will apply to all courses in the selected category.', 'auto-email-discount' ); ?></p>
+    <?php if ( empty( $course_categories ) ) : ?>
+        <p class="notice notice-warning inline" style="padding: 10px;">
+            <?php _e( 'No LearnDash course categories found. Please ensure LearnDash is installed and course categories are created.', 'auto-email-discount' ); ?>
+        </p>
+    <?php endif; ?>
+    <?php
+}
+
 /** Helper function for sorting email rules by domain, then user ID. */
 function aed_sort_email_rules_callback( $a, $b ) {
     if ( ! isset( $a['email'] ) || ! isset( $b['email'] ) ) { return 0; }
@@ -322,6 +402,30 @@ function aed_sanitize_settings_adv( $input ) {
         usort( $new_input['specific_email_discounts'], 'aed_sort_email_rules_callback' );
     }
 
+    // Sanitize course category discounts
+    $new_input['course_category_discounts'] = array();
+    if ( isset( $input['course_category_discounts'] ) && is_array( $input['course_category_discounts'] ) ) {
+        foreach ( $input['course_category_discounts'] as $rule_candidate ) {
+            if ( is_array( $rule_candidate ) &&
+                 ! empty( $rule_candidate['category_id'] ) &&
+                 isset( $rule_candidate['percentage'] ) && $rule_candidate['percentage'] !== '' ) {
+
+                $category_id = intval( $rule_candidate['category_id'] );
+                $percentage_value = trim( $rule_candidate['percentage'] );
+
+                // Verify the category exists
+                if ( $category_id > 0 && term_exists( $category_id, 'ld_course_category' ) ) {
+                    $new_input['course_category_discounts'][] = array(
+                        'category_id'   => $category_id,
+                        'percentage'    => max( 0, min( 100, floatval( $percentage_value ) ) ),
+                        'one_time'      => isset( $rule_candidate['one_time'] ) ? 1 : 0,
+                        'category_note' => isset( $rule_candidate['category_note'] ) ? sanitize_text_field( $rule_candidate['category_note'] ) : '',
+                    );
+                }
+            }
+        }
+    }
+
     return $new_input;
 }
 
@@ -339,9 +443,10 @@ function aed_apply_email_based_discount_adv( $cart ) {
 
     $domain_discounts = ! empty( $settings['domain_discounts'] ) && is_array($settings['domain_discounts']) ? $settings['domain_discounts'] : array();
     $specific_email_discounts = ! empty( $settings['specific_email_discounts'] ) && is_array($settings['specific_email_discounts']) ? $settings['specific_email_discounts'] : array();
+    $course_category_discounts = ! empty( $settings['course_category_discounts'] ) && is_array($settings['course_category_discounts']) ? $settings['course_category_discounts'] : array();
     $base_discount_label = ! empty( $settings['discount_label'] ) ? $settings['discount_label'] : __( 'Special Discount', 'auto-email-discount' );
 
-    if ( empty( $domain_discounts ) && empty( $specific_email_discounts ) ) { return; }
+    if ( empty( $domain_discounts ) && empty( $specific_email_discounts ) && empty( $course_category_discounts ) ) { return; }
 
     $user_email_raw = '';
     if ( is_user_logged_in() ) {
@@ -409,23 +514,67 @@ function aed_apply_email_based_discount_adv( $cart ) {
                         $found_discount_percentage = floatval( $rule['percentage'] );
                         $found_is_one_time = $is_one_time;
                         $found_product_ids_string = isset( $rule['product_ids'] ) ? $rule['product_ids'] : '';
-                        break; 
+                        break;
                     }
                 }
             }
         }
     }
 
-    // 3. Apply the fee
+    // 3. Check Course Category Discounts
+    $found_category_id = 0;
+    if ( $found_discount_percentage <= 0 && !empty( $course_category_discounts ) ) {
+        // Check if any cart items are LearnDash courses in the configured categories
+        foreach ( $cart->get_cart() as $cart_item ) {
+            $product_id = $cart_item['product_id'];
+
+            // Check if this product is a LearnDash course
+            $course_id = get_post_meta( $product_id, '_related_course', true );
+            if ( empty( $course_id ) ) {
+                // Some setups link products directly to courses, check alternative method
+                $course_id = $product_id;
+                if ( get_post_type( $course_id ) !== 'sfwd-courses' ) {
+                    continue; // Not a course
+                }
+            }
+
+            // Get course categories
+            $course_terms = wp_get_post_terms( $course_id, 'ld_course_category', array( 'fields' => 'ids' ) );
+            if ( is_wp_error( $course_terms ) || empty( $course_terms ) ) {
+                continue;
+            }
+
+            // Check if course belongs to any configured category
+            foreach ( $course_category_discounts as $rule ) {
+                if ( isset( $rule['category_id'] ) && isset( $rule['percentage'] ) ) {
+                    if ( in_array( $rule['category_id'], $course_terms ) ) {
+                        $is_one_time = isset( $rule['one_time'] ) ? $rule['one_time'] : 0;
+
+                        if ( $is_one_time && in_array( $user_email_lc, $used_emails ) ) {
+                            continue; // Skip this rule
+                        }
+
+                        $found_discount_percentage = floatval( $rule['percentage'] );
+                        $found_is_one_time = $is_one_time;
+                        $found_category_id = $rule['category_id'];
+                        break 2; // Break out of both loops
+                    }
+                }
+            }
+        }
+    }
+
+    // 4. Apply the fee
     if ( $found_discount_percentage > 0 ) {
-        
+
         $discount_base_amount = 0;
-        
+
         if ( ! empty( $found_product_ids_string ) ) {
+            // Product-specific discount
             $ids = explode( ',', $found_product_ids_string );
             $ids = array_map( 'trim', $ids );
             $ids = array_map( 'intval', $ids );
-            $ids = array_filter( $ids, function($id) { return $id > 0; } ); 
+            $ids = array_filter( $ids, function($id) { return $id > 0; } );
 
             if ( ! empty( $ids ) ) {
                 foreach ( $cart->get_cart() as $cart_item ) {
@@ -434,7 +583,28 @@ function aed_apply_email_based_discount_adv( $cart ) {
                     }
                 }
             }
+        } elseif ( $found_category_id > 0 ) {
+            // Category-specific discount - apply only to courses in this category
+            foreach ( $cart->get_cart() as $cart_item ) {
+                $product_id = $cart_item['product_id'];
+
+                // Check if this product is a LearnDash course
+                $course_id = get_post_meta( $product_id, '_related_course', true );
+                if ( empty( $course_id ) ) {
+                    $course_id = $product_id;
+                    if ( get_post_type( $course_id ) !== 'sfwd-courses' ) {
+                        continue;
+                    }
+                }
+
+                // Check if course belongs to the discount category
+                $course_terms = wp_get_post_terms( $course_id, 'ld_course_category', array( 'fields' => 'ids' ) );
+                if ( ! is_wp_error( $course_terms ) && ! empty( $course_terms ) && in_array( $found_category_id, $course_terms ) ) {
+                    $discount_base_amount += $cart_item['line_subtotal'];
+                }
+            }
         } else {
+            // Cart-wide discount
             $discount_base_amount = $cart->get_subtotal();
         }
 
